@@ -1,14 +1,3 @@
-<div align="center">
-
-[![Docker](https://img.shields.io/badge/Docker-20.10+-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://docker.com)
-[![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
-[![Telegram](https://img.shields.io/badge/Telegram-Bot-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://core.telegram.org/bots)
-[![Sber](https://img.shields.io/badge/Sber-GigaChat-2E9B4C?style=for-the-badge&logo=sber&logoColor=white)](https://developers.sber.ru)
-
-**Простой и эффективный способ развернуть Telegram-бота с интеграцией GigaChat API**
-
-</div>
-
 ---
 
 ## 🔑 Предварительные требования
