@@ -11,8 +11,6 @@ import ssl
 from aiogram import Bot, Dispatcher, types
 from aiogram.fsm.storage.memory import MemoryStorage
 
-# ------------------- НАСТРОЙКИ -------------------
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "data", "videos.db")
 
@@ -25,15 +23,10 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-# ------------------- БАЗА ДАННЫХ -------------------
-
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
-
-# ------------------- GIGACHAT API -------------------
-
 class GigaChatAPI:
     def __init__(self):
         self.auth_token = None
@@ -86,8 +79,6 @@ class GigaChatAPI:
 
 gigachat = GigaChatAPI()
 
-# ------------------- ПРОМПТ -------------------
-
 def build_prompt(user_query: str) -> str:
     return f"""
 Ты генератор SQL-запросов для SQLite.
@@ -100,7 +91,7 @@ videos (
     views_count INTEGER,
     likes_count INTEGER,
     comments_count INTEGER,
-    video_created_at TEXT
+    video_created_at TEXT  -- формат: YYYY-MM-DD HH:MM:SS
 )
 
 snapshots (
@@ -109,43 +100,41 @@ snapshots (
     delta_views_count INTEGER,
     delta_likes_count INTEGER,
     delta_comments_count INTEGER,
-    created_at TEXT
+    created_at TEXT        -- формат: YYYY-MM-DD HH:MM:SS
 )
 
-ПРАВИЛА:
+ВАЖНО: Все даты хранятся в формате 'YYYY-MM-DD HH:MM:SS'. 
+Для корректного сравнения дат ВСЕГДА используй функцию datetime().
 
+ПРАВИЛА:
 1. Генерируй ТОЛЬКО SQL.
 2. Только SELECT запросы.
 3. Никаких комментариев в ответе.
-4. Никаких объяснений.
-5. Без ``` и другого форматирования.
-6. Используй datetime() для работы с датами.
-7. Если нужно получить одно число (сумму, количество) - используй агрегатные функции.
+4. Без ``` и другого форматирования.
+5. Для сравнения дат всегда используй datetime(поле) BETWEEN datetime(начало) AND datetime(конец)
 
 Примеры правильных запросов:
 
 Вопрос: "Сколько всего просмотров у всех видео?"
 Ответ: SELECT SUM(views_count) FROM videos;
 
-Вопрос: "На сколько просмотров выросли все видео 28 ноября 2025?"
-Ответ: SELECT SUM(delta_views_count) FROM snapshots WHERE datetime(created_at) BETWEEN datetime('2025-11-28 00:00:00') AND datetime('2025-11-28 23:59:59');
-
-Вопрос: "Сколько лайков у видео за всё время?"
-Ответ: SELECT SUM(likes_count) FROM videos;
+Вопрос: "Какое суммарное количество просмотров набрали все видео, опубликованные в июне 2025 года?"
+Ответ: SELECT SUM(views_count) FROM videos WHERE datetime(video_created_at) BETWEEN datetime('2025-06-01 00:00:00') AND datetime('2025-06-30 23:59:59');
 
 Вопрос: "Какой суммарный прирост комментариев получили все видео за первые 3 часа после публикации каждого из них?"
-Ответ: SELECT SUM(likes_count) FROM videos;
+Ответ: SELECT SUM(s.delta_comments_count) 
+FROM snapshots s 
+JOIN videos v ON s.video_id = v.id 
+WHERE datetime(s.created_at) BETWEEN datetime(v.video_created_at) AND datetime(v.video_created_at, '+3 hours');
 
-напоминаю, что в snapshots video_created_at не существует
+Вопрос: "На сколько просмотров выросли все видео 28 ноября 2025?"
+Ответ: SELECT SUM(delta_views_count) FROM snapshots WHERE date(created_at) = '2025-11-28';
 
 Запрос пользователя:
 {user_query}
 """
 
-# ------------------- ВЫПОЛНЕНИЕ SQL -------------------
-
 async def execute_ai_sql(sql_query: str):
-    # Защита
     forbidden = ["INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "PRAGMA"]
     if any(word in sql_query.upper() for word in forbidden):
         logging.error(f"Опасный SQL: {sql_query}")
@@ -158,11 +147,9 @@ async def execute_ai_sql(sql_query: str):
         cursor.execute(sql_query)
         result = cursor.fetchone()
         
-        # Если результат - кортеж с одним значением
         if result and len(result) == 1:
             return str(result[0] if result[0] is not None else 0)
         
-        # Если результат - несколько значений или пустой
         elif result:
             return str(result[0] if result[0] is not None else 0)
         else:
@@ -175,44 +162,34 @@ async def execute_ai_sql(sql_query: str):
     finally:
         conn.close()
 
-# ------------------- ОБРАБОТКА СООБЩЕНИЙ -------------------
-
 @dp.message()
 async def handle(message: types.Message):
     try:
         user_query = message.text
         logging.info(f"User query: {user_query}")
 
-        # Получаем SQL от GigaChat
         ai_response = await gigachat.send_message(build_prompt(user_query))
         logging.info(f"AI RAW SQL: {ai_response}")
 
-        # Очистка SQL от markdown
         sql_query = re.sub(r'```sql|```', '', ai_response).strip()
         
-        # Если после очистки пусто, берем оригинал
         if not sql_query:
             sql_query = ai_response.strip()
 
         logging.info(f"Cleaned SQL: {sql_query}")
 
-        # Выполняем SQL
         result = await execute_ai_sql(sql_query)
 
-        # Отправляем результат
         await message.answer(result)
 
     except Exception as e:
         logging.error(f"Error: {e}")
         await message.answer("Произошла ошибка при обработке запроса")
 
-# ------------------- MAIN -------------------
-
 async def main():
     import urllib3
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-    # Получаем токен при запуске
     gigachat.get_auth_token()
     logging.info("БОТ ЗАПУЩЕН")
 
