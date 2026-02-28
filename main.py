@@ -4,6 +4,8 @@ import sqlite3
 import json
 import re
 import os
+import glob
+import urllib3
 from datetime import datetime
 import requests
 import aiohttp
@@ -11,22 +13,143 @@ import ssl
 from aiogram import Bot, Dispatcher, types
 from aiogram.fsm.storage.memory import MemoryStorage
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "data", "videos.db")
-
 BOT_TOKEN = "8652912096:AAHv7rizsCjkC1GLA2fjdjLjtLGeAtjqTkw"
 CLIENT_ID = "c91391d1-4218-4b77-826d-cd119ecb72e7"
 AUTH_KEY = "MDE5YzhlOGQtNGQwNS03ZmE2LWJhNmYtZDNjYWM3YjU2NTJiOjU3MzY5ODMzLWM5Y2MtNGU2Mi05YTlhLWNlYWY0OWI4ZWY2MQ=="
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+JSON_DIR = os.path.join(BASE_DIR, "json")
+DB_PATH = os.path.join(BASE_DIR, "data", "videos.db")
 
 logging.basicConfig(level=logging.INFO)
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
+def find_json_file():
+    
+    if not os.path.exists(JSON_DIR):
+        logging.error("Папка json не найдена")
+        return None
+    
+    json_files = glob.glob(os.path.join(JSON_DIR, "*.json"))
+    
+    if not json_files:
+        logging.error("В папке json нет JSON файлов")
+        return None
+    
+    return json_files[0]
+
+def create_database_from_json():
+    if os.path.exists(DB_PATH):
+        logging.info("База данных уже существует")
+        return True
+    
+    logging.info("База данных не найдена. Создаем из JSON...")
+    
+    json_path = find_json_file()
+    if not json_path:
+        logging.error("Не удалось найти JSON файл для создания БД")
+        return False
+    
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS videos (
+        id TEXT PRIMARY KEY,
+        creator_id TEXT,
+        views_count INTEGER,
+        likes_count INTEGER,
+        comments_count INTEGER,
+        video_created_at TEXT
+    )
+    ''')
+    
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS snapshots (
+        id TEXT PRIMARY KEY,
+        video_id TEXT,
+        delta_views_count INTEGER,
+        delta_likes_count INTEGER,
+        delta_comments_count INTEGER,
+        created_at TEXT,
+        FOREIGN KEY (video_id) REFERENCES videos (id)
+    )
+    ''')
+    
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_snapshots_video_id ON snapshots(video_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_snapshots_created_at ON snapshots(created_at)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_videos_created_at ON videos(video_created_at)')
+    
+    conn.commit()
+    
+    try:
+        with open(json_path, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+        if isinstance(data, dict) and "videos" in data:
+            videos_data = data["videos"]
+        elif isinstance(data, list):
+            videos_data = data
+        else:
+            logging.error("Неподдерживаемая структура JSON")
+            conn.close()
+            return False
+        
+        cursor.execute("DELETE FROM snapshots")
+        cursor.execute("DELETE FROM videos")
+        
+        for video in videos_data:
+            if not isinstance(video, dict):
+                continue
+                
+            try:
+                cursor.execute('''
+                INSERT OR REPLACE INTO videos 
+                (id, creator_id, views_count, likes_count, comments_count, video_created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ''', (
+                    video.get('id', ''),
+                    video.get('creator_id', ''),
+                    video.get('views_count', 0),
+                    video.get('likes_count', 0),
+                    video.get('comments_count', 0),
+                    video.get('video_created_at', '')
+                ))
+                
+                for snapshot in video.get('snapshots', []):
+                    cursor.execute('''
+                    INSERT OR REPLACE INTO snapshots 
+                    (id, video_id, delta_views_count, delta_likes_count, delta_comments_count, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ''', (
+                        snapshot.get('id', ''),
+                        video.get('id', ''),
+                        snapshot.get('delta_views_count', 0),
+                        snapshot.get('delta_likes_count', 0),
+                        snapshot.get('delta_comments_count', 0),
+                        snapshot.get('created_at', '')
+                    ))
+                    
+            except Exception as e:
+                logging.error(f"Ошибка при вставке видео: {e}")
+                continue
+        
+        conn.commit()
+        conn.close()
+            
+    except Exception as e:
+        logging.error(f"Ошибка при чтении JSON: {e}")
+        conn.close()
+        return False
+
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
 class GigaChatAPI:
     def __init__(self):
         self.auth_token = None
@@ -187,12 +310,15 @@ async def handle(message: types.Message):
         await message.answer("Произошла ошибка при обработке запроса")
 
 async def main():
-    import urllib3
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
+    
+    if not create_database_from_json():
+        logging.error("Не удалось создать базу данных. Бот не может быть запущен.")
+        return
+    logging.info("Получение токена GigaChat...")
     gigachat.get_auth_token()
+    
     logging.info("БОТ ЗАПУЩЕН")
-
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
