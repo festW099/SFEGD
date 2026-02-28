@@ -6,4 +6,6 @@ services:
       - .env
     volumes:
       - ./data:/data
+      - ./json:/app/json
+      - ./data:/app/data
     restart: unless-stopped

@@ -13,9 +13,9 @@ import ssl
 from aiogram import Bot, Dispatcher, types
 from aiogram.fsm.storage.memory import MemoryStorage
 
-BOT_TOKEN = "8652912096:AAHv7rizsCjkC1GLA2fjdjLjtLGeAtjqTkw"
-CLIENT_ID = "c91391d1-4218-4b77-826d-cd119ecb72e7"
-AUTH_KEY = "MDE5YzhlOGQtNGQwNS03ZmE2LWJhNmYtZDNjYWM3YjU2NTJiOjU3MzY5ODMzLWM5Y2MtNGU2Mi05YTlhLWNlYWY0OWI4ZWY2MQ=="
+BOT_TOKEN = os.environ.get('BOT_TOKEN')
+CLIENT_ID = os.environ.get('CLIENT_ID')
+AUTH_KEY = os.environ.get('AUTH_KEY')
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 JSON_DIR = os.path.join(BASE_DIR, "json")

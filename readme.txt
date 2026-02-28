@@ -1,22 +1,25 @@
 Подготовьте данные:
 
-BOT_TOKEN – получите у @BotFather
+BOT_TOKEN – получите у @BotFather (https://telegram.me/s/BotFther)
 
-CLIENT_ID и AUTH_KEY – получите на портале Sber после создания приложения GigaChat API.
+CLIENT_ID и AUTH_KEY – получите на портале Sber после создания приложения GigaChat API. (https://developers.sber.ru/)
 
-Подготовьте JSON-файл с данными
+(можно использовать те данные, что были даны изначально)
+
+Подготовьте JSON-файл с данными и поместите его в папку json
 
 Запустите контейнер
 
-bash
 docker-compose up -d
 При первом запуске автоматически создастся база данных и заполнится данными из JSON. Бот начнёт отвечать на сообщения.
 
 Просмотр логов
 
-bash
 docker-compose logs -f
+
 Остановка
 
-bash
 docker-compose down
+
+ВНИМАНИЕ
+перед проверкой лучше удалить все прошлые файлы .json и .db 

@@ -9,7 +9,7 @@ RUN useradd -m -u 1000 appuser && \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py start.py run.py ./
+COPY main.py ./
 
 # Переключаемся на непривилегированного пользователя
 USER appuser
